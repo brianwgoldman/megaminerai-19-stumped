@@ -34,7 +34,7 @@ class AI(BaseAI):
         Returns
             str: The name of your Player.
         """
-        return "Stumped Python Player" # REPLACE THIS WITH YOUR TEAM NAME
+        return "the-goldman-clause"  # REPLACE THIS WITH YOUR TEAM NAME
 
     def start(self):
         """ This is called once the game starts and your AI knows its playerID and game. You can initialize your AI here.
