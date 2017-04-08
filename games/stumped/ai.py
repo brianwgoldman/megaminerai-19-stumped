@@ -6,8 +6,8 @@ import random
 import heapq
 from collections import defaultdict
 
-WATER = 'Water'
-LAND = 'Land'
+WATER = 'water'
+LAND = 'land'
 NORTH = 'North'
 SOUTH = 'South'
 EAST = 'East'
@@ -40,20 +40,31 @@ def opposite(direction):
         raise Exception("Unknown direction: " + direction)
     
 
+def tile_distance(t1, t2):
+    return abs(t1.x - t2.x) + abs(t1.y - t2.y)
+
 def can_act(beaver):
     return beaver and beaver.turns_distracted == 0 and beaver.health > 0
 
 def move_cost(start, end):
     if start.type == WATER:
         # Going with the flow
-        if get_adjacet(start, start.flow_direction) is end:
+        if start.flow_direction and get_adjacent(start, start.flow_direction) is end:
             return 1
-        elif get_adjacent(tile, opposite(direction)) is end:
+        elif end.flow_direction and get_adjacent(end, end.flow_direction) is start:
             return 3
-    return 2
+        else:
+            return 2
+    elif start.type == LAND:
+        return 2
+    else:
+        raise Exception("Unknown tile type:", start.type)
 
 def pathable(tile):
     return tile and tile.is_pathable()
+
+def droppable(tile):
+    return tile and not tile.spawner and tile.type == LAND
 
 def load(beaver):
     return beaver.branches + beaver.food
@@ -91,6 +102,9 @@ class AI(BaseAI):
     def my_lodge(self, tile):
         return tile.lodge_owner and tile.lodge_owner == self.player
 
+    def their_lodge(self, tile):
+        return tile.lodge_owner and tile.lodge_owner == self.player.opponent
+
     def spawn(self):
         can_spawn = [lodge for lodge in self.player.lodges if not lodge.beaver]
         alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
@@ -108,10 +122,13 @@ class AI(BaseAI):
                 job.recruit(lodge)
                 alive_beavers += 1
 
+    def enough_to_build(self, beaver, tile):
+        return beaver.branches + tile.branches >= self.player.branches_to_build_lodge
+
     def try_build_lodge(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
             return
-        if (beaver.branches + beaver.tile.branches) >= self.player.branches_to_build_lodge and not beaver.tile.lodge_owner:
+        if self.enough_to_build(beaver, beaver.tile) and not beaver.tile.lodge_owner:
             print('{} building lodge'.format(beaver))
             beaver.build_lodge()
 
@@ -131,11 +148,11 @@ class AI(BaseAI):
 #             beaver.pickup(tile, 'food', 1)
 #             break
 
-    def try_harvest(self, beaver):
+    def try_harvest(self, beaver, type):
         # if we can carry more, try to harvest something
         if not can_act(beaver) or beaver.actions == 0 or load(beaver) >= beaver.job.carry_limit:
             return
-        harvest_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.spawner]
+        harvest_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.spawner and tile.spawner.type == type]
         if harvest_tiles:
             tile = random.choice(harvest_tiles)
             print('{} harvesting {}'.format(beaver, tile.spawner))
@@ -149,6 +166,48 @@ class AI(BaseAI):
             target_tile = random.choice(target_tiles)
             print('{} attacking {}'.format(beaver, target_tile.beaver))
             beaver.attack(target_tile.beaver)
+
+    def attack_move(self, beaver, path, last_step):
+        self.try_attack(beaver)
+        for step in path[1:]:
+            if move_cost(beaver.tile, step) > beaver.moves:
+                break
+            if step is path[-1] and not last_step:
+                break
+            print('Moving {} towards {}'.format(beaver, path[-1]))
+            beaver.move(step)
+            self.try_attack(beaver)
+
+
+    def gather_branches(self, beaver):
+        print("Gather mode")
+        self.try_attack(beaver)
+        self.try_harvest(beaver, BRANCHES)
+        goals = [tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES]
+        path = self.find_path([beaver.tile], goals)
+        self.attack_move(beaver, path, last_step=False)
+        self.try_harvest(beaver, BRANCHES)
+
+    def pile_branches(self, beaver):
+        print("Pile mode")
+        self.try_attack(beaver)
+        goals = [tile for tile in self.game.tiles if droppable(tile) and not self.my_lodge(tile) and not self.their_lodge(tile)]
+        better = [tile for tile in goals if tile.branches > 0]
+        if better:
+            goals = better
+        path = self.find_path([beaver.tile], goals)
+        if not path:
+            return
+        if self.enough_to_build(beaver, path[-1]):
+            self.attack_move(beaver, path, last_step=True)
+            self.try_build_lodge(beaver)
+        else:
+            self.attack_move(beaver, path, last_step=False)
+            if len(path) > 1 and tile_distance(beaver.tile, path[-1]) < 2:
+                if beaver.actions > 0 and beaver.branches > 0:
+                    print("Dropping off")
+                    beaver.drop(path[-1], 'branches', beaver.branches)
+
 
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
@@ -171,51 +230,11 @@ class AI(BaseAI):
         for beaver in self.player.beavers:  # if we have a beaver, and it's not distracted, and it is alive (health greater than 0)
             if not can_act(beaver):
                 continue
-            self.try_attack(beaver)
             self.try_build_lodge(beaver)
-            self.try_harvest(beaver)
-            self.try_pick_up(beaver)
-            goals = [tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES]
-            if load(beaver) >= beaver.job.carry_limit:
-                goals = [tile for tile in self.game.tiles if self.my_lodge(tile)]
-            if goals:
-                path = self.find_path([beaver.tile], goals)
-                for step in path[1:-1]:
-                    if move_cost(beaver.tile, step) <= beaver.moves:
-                        print('Moving {} towards {}'.format(beaver, path[-1]))
-                        beaver.move(step)
-            self.try_attack(beaver)
-            self.try_build_lodge(beaver)
-            self.try_pick_up(beaver)
-            self.try_harvest(beaver)
-            
-            # 3. Try to do an action on the beaver
-            if beaver.actions > 0:
-                # then let's try to do an action!
-
-                if False:
-                    # choose a random tile from our neighbors + out tile to drop stuff on
-                    neighbors = beaver.tile.get_neighbors()
-                    neighbors.append(beaver.tile)
-                    drop_tiles = neighbors
-
-                    # find a valid tile to drop resources onto
-                    tile_to_drop_on = None
-                    for tile in drop_tiles:
-                        if not tile.spawner:
-                            tile_to_drop_on = tile
-                            break
-
-                    # if there is a tile that resources can be dropped on
-                    if tile_to_drop_on:
-                        # if we have branches to drop
-                        if beaver.branches > 0:
-                            print('{} dropping 1 branch'.format(beaver))
-                            beaver.drop(tile_to_drop_on, 'branches', 1)
-                        # or if we have food to drop
-                        elif beaver.food > 0:
-                            print('{} dropping 1 food'.format(beaver))
-                            beaver.drop(tile_to_drop_on, 'food', 1)
+            if load(beaver) < beaver.job.carry_limit:
+                self.gather_branches(beaver)
+            elif beaver.branches:
+                self.pile_branches(beaver)
 
         print('Done with our turn')
         return True # to signify that we are truly done with this turn
