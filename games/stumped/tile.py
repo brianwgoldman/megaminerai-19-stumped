@@ -169,3 +169,10 @@ class Tile(GameObject):
             bool: True if the tile is a neighbor of this Tile, False otherwise
         """
         return bool(tile and tile in self.get_neighbors())
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __lt__(self, other):
+        return self.id < other.id
+    def __hash__(self):
+        return int(self.id)
