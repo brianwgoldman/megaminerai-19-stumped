@@ -165,8 +165,8 @@ class AI(BaseAI):
         neighbors = beaver.tile.get_neighbors()
         branch_tiles = [tile for tile in neighbors if tile.branches > 0 and self.their_lodge(tile)]
         if branch_tiles:
-            tile = random.choice(branch_tiles)
-            print('{} picking up branches from opponent'.format(beaver))
+            tile = min(branch_tiles, key=lambda tile: tile.branches)
+            print('\n{} picking up branches from opponent\n'.format(beaver))
             beaver.pickup(tile, 'branches', min(tile.branches, beaver.job.carry_limit - load(beaver)))
 #         # try to pickup food
 #         elif tile.food > 0:
@@ -185,8 +185,10 @@ class AI(BaseAI):
             beaver.harvest(tile.spawner)
 
     def try_attack(self, beaver):
+        self.try_pickup_opponent(beaver)
         if not can_act(beaver) or beaver.actions == 0:
             return
+
         target_tiles = [tile for tile in beaver.tile.get_neighbors()
                         if tile.beaver and tile.beaver.owner != self.player and
                         tile.beaver.recruited and tile.beaver.health > 0 and beaver.turns_distracted == 0]
@@ -267,8 +269,10 @@ class AI(BaseAI):
 
     def go_hunting(self, beaver):
         self.try_attack(beaver)
-        path = self.find_path([beaver.tile], [enemy.tile for enemy in self.player.opponent.beavers
-                                              if enemy.health > 0 and enemy.turns_distracted == 0])
+        path = self.find_path([beaver.tile], [tile for tile in self.game.tiles if self.their_lodge(tile)])
+        if not path:
+            path = self.find_path([beaver.tile], [enemy.tile for enemy in self.player.opponent.beavers
+                                                  if enemy.health > 0 and enemy.turns_distracted == 0])
         self.attack_move(beaver, path, last_step=False)
 #         ordering = [self.HUNGRY, self.HOT_LADY, self.FIGHTER, self.BULKY, self.BUILDER, self.SWIFT, self.BASIC]
 #         for job in ordering:
@@ -297,6 +301,8 @@ class AI(BaseAI):
                 self.BUILDER = job
             else:
                 raise Exception("Bad job title:" + job.title)
+        self.COMBAT = set([self.HUNGRY, self.BASIC, self.HOT_LADY])
+
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
 
@@ -314,7 +320,7 @@ class AI(BaseAI):
                 continue
             # self.try_suicide(beaver)
             self.try_build_lodge(beaver)
-            if beaver.job is self.HOT_LADY:
+            if beaver.job in self.COMBAT:
                 self.go_hunting(beaver)
             elif load(beaver) < beaver.job.carry_limit:
                 self.gather_branches(beaver)
