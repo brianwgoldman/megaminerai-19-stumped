@@ -324,13 +324,15 @@ class AI(BaseAI):
             if not can_act(beaver):
                 continue
             self.try_build_lodge(beaver)
-            if beaver.job in self.COMBAT:
-                self.go_hunting(beaver)
-            elif load(beaver) < beaver.job.carry_limit:
-                self.gather_branches(beaver)
-            elif beaver.branches:
+            if load(beaver) >= beaver.job.carry_limit:
+                if beaver.job in self.COMBAT:
+                    print("\nCombat loaded!\n")
                 self.try_build_lodge(beaver)
                 self.pile_branches(beaver)
+            elif beaver.job in self.COMBAT:
+                self.go_hunting(beaver)
+            else:
+                self.gather_branches(beaver)
         for beaver in self.player.beavers:
             self.try_move_off_lodge(beaver)
         self.spawn()
