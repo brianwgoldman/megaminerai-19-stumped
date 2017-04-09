@@ -176,3 +176,10 @@ class Beaver(GameObject):
             bool: True if successfully picked up a resource, False otherwise.
         """
         return self._run_on_server('pickup', tile=tile, resource=resource, amount=amount)
+    def __eq__(self, other):
+        return self.id == other.id
+
+    def __lt__(self, other):
+        return self.id < other.id
+    def __hash__(self):
+        return int(self.id)

@@ -161,7 +161,7 @@ class AI(BaseAI):
     def try_attack(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
             return
-        target_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.beaver and tile.beaver.owner != self.player]
+        target_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.beaver and tile.beaver.owner != self.player and tile.beaver.recruited]
         if target_tiles:
             target_tile = random.choice(target_tiles)
             print('{} attacking {}'.format(beaver, target_tile.beaver))
@@ -234,6 +234,7 @@ class AI(BaseAI):
             if load(beaver) < beaver.job.carry_limit:
                 self.gather_branches(beaver)
             elif beaver.branches:
+                self.try_build_lodge(beaver)
                 self.pile_branches(beaver)
 
         print('Done with our turn')
