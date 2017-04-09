@@ -99,6 +99,7 @@ class AI(BaseAI):
         """
         # replace with your end logic
 
+
     def my_lodge(self, tile):
         return tile.lodge_owner and tile.lodge_owner == self.player
 
@@ -106,21 +107,17 @@ class AI(BaseAI):
         return tile.lodge_owner and tile.lodge_owner == self.player.opponent
 
     def spawn(self):
-        can_spawn = [lodge for lodge in self.player.lodges if not lodge.beaver]
+        can_spawn = {lodge for lodge in self.player.lodges if not lodge.beaver}
         alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
-        for lodge in self.player.lodges:
-            if lodge.beaver:
-                continue
-            # and we need a Job to spawn
+        while alive_beavers < self.game.free_beavers_count:
+            path = self.find_path(can_spawn, self.branch_spawners())
+            if not path:
+                break
+            lodge = path[0]
+            can_spawn.remove(lodge)
             job = random.choice(self.game.jobs)
-
-            # if we have less beavers than the freeBeavers count, it is free to spawn
-            #    otherwise if that lodge has enough food on it to cover the job's cost
-            if alive_beavers < self.game.free_beavers_count or lodge.food >= job.cost:
-                # then spawn a new beaver of that job!
-                print('Recruiting {} to {}'.format(job, lodge))
-                job.recruit(lodge)
-                alive_beavers += 1
+            job.recruit(lodge)
+            alive_beavers += 1
 
     def enough_to_build(self, beaver, tile):
         return beaver.branches + tile.branches >= self.player.branches_to_build_lodge
@@ -129,7 +126,7 @@ class AI(BaseAI):
         if not can_act(beaver) or beaver.actions == 0:
             return
         if self.enough_to_build(beaver, beaver.tile) and not beaver.tile.lodge_owner:
-            print('{} building lodge'.format(beaver))
+            # print('{} building lodge'.format(beaver))
             beaver.build_lodge()
 
     def try_pick_up(self, beaver):
@@ -140,8 +137,18 @@ class AI(BaseAI):
         branch_tiles = [tile for tile in neighbors if tile.branches > 0 and not self.my_lodge(tile)]
         if branch_tiles:
             tile = random.choice(branch_tiles)
-            print('{} picking up branches'.format(beaver))
+            # print('{} picking up branches'.format(beaver))
             beaver.pickup(tile, 'branches', 1)
+
+    def try_pickup_opponent(self, beaver):
+        if not can_act(beaver) or beaver.actions == 0 or load(beaver) >= beaver.job.carry_limit:
+            return
+        neighbors = beaver.tile.get_neighbors()
+        branch_tiles = [tile for tile in neighbors if tile.branches > 0 and self.their_lodge(tile)]
+        if branch_tiles:
+            tile = random.choice(branch_tiles)
+            print('{} picking up branches from opponent'.format(beaver))
+            beaver.pickup(tile, 'branches', min(tile.branches, beaver.job.carry_limit - load(beaver)))
 #         # try to pickup food
 #         elif tile.food > 0:
 #             print('{} picking up food'.format(beaver))
@@ -152,18 +159,18 @@ class AI(BaseAI):
         # if we can carry more, try to harvest something
         if not can_act(beaver) or beaver.actions == 0 or load(beaver) >= beaver.job.carry_limit:
             return
-        harvest_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.spawner and tile.spawner.type == type]
+        harvest_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == type]
         if harvest_tiles:
-            tile = random.choice(harvest_tiles)
+            tile = max(harvest_tiles, key=lambda tile: tile.spawner.health)
             print('{} harvesting {}'.format(beaver, tile.spawner))
             beaver.harvest(tile.spawner)
 
     def try_attack(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
             return
-        target_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.beaver and tile.beaver.owner != self.player and tile.beaver.recruited]
+        target_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.beaver and tile.beaver.owner != self.player and tile.beaver.recruited and tile.beaver.health > 0]
         if target_tiles:
-            target_tile = random.choice(target_tiles)
+            target_tile = min(target_tiles, key=lambda tile: tile.beaver.health)
             print('{} attacking {}'.format(beaver, target_tile.beaver))
             beaver.attack(target_tile.beaver)
 
@@ -174,10 +181,12 @@ class AI(BaseAI):
                 break
             if step is path[-1] and not last_step:
                 break
-            print('Moving {} towards {}'.format(beaver, path[-1]))
+            # print('Moving {} towards {}'.format(beaver, path[-1]))
             beaver.move(step)
             self.try_attack(beaver)
 
+    def branch_spawners(self):
+        return {tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES}
 
     def gather_branches(self, beaver):
         print("Gather mode")
@@ -188,10 +197,23 @@ class AI(BaseAI):
         self.attack_move(beaver, path, last_step=False)
         self.try_harvest(beaver, BRANCHES)
 
+    def steal_branches(self, beaver):
+        # print("Steal Mode!")
+        self.try_attack(beaver)
+        self.try_pickup_opponent(beaver)
+        goals = [tile for tile in self.game.tiles if self.their_lodge(tile)]
+        if not goals:
+            return
+        path = self.find_path([beaver.tile], goals)
+        if not path:
+            return
+        self.attack_move(beaver, path, last_step=False)
+        self.try_pickup_opponent(beaver)
+
     def pile_branches(self, beaver):
         print("Pile mode")
         self.try_attack(beaver)
-        goals = [tile for tile in self.game.tiles if droppable(tile) and not self.my_lodge(tile) and not self.their_lodge(tile)]
+        goals = [tile for tile in self.closer_to_me if droppable(tile) and not self.my_lodge(tile) and not self.their_lodge(tile)]
         better = [tile for tile in goals if tile.branches > 0]
         if better:
             goals = better
@@ -225,8 +247,8 @@ class AI(BaseAI):
 
         # First let's do a simple print statement telling us what turn we are on
         print('My Turn {}'.format(self.game.current_turn))
+        self.set_nearest_beaver()
         self.spawn()
-        # 1. get the first beaver to try to do things with
         for beaver in self.player.beavers:  # if we have a beaver, and it's not distracted, and it is alive (health greater than 0)
             if not can_act(beaver):
                 continue
@@ -265,3 +287,29 @@ class AI(BaseAI):
                     source[neighbor] = (working, current_distance)
                     heapq.heappush(open_q, (current_distance, neighbor))
         return []
+
+    def set_nearest_beaver(self):
+        open_q = [(0, beaver.tile, beaver) for beaver in self.game.beavers]
+        heapq.heapify(open_q)
+        source = defaultdict(lambda: (None, 100000000))
+        for beaver in self.game.beavers:
+            source[beaver.tile] = (beaver, 0)
+        while open_q:
+            moves, working, beaver = heapq.heappop(open_q)
+            for neighbor in working.get_neighbors():
+                previous_beaver, previous_distance = source[neighbor]
+                current_distance = moves + move_cost(working, neighbor)
+                if previous_beaver is None or ceil(current_distance / beaver.job.moves) < ceil(previous_distance / previous_beaver.job.moves):
+                    source[neighbor] = (beaver, current_distance)
+                    if pathable(neighbor):
+                        heapq.heappush(open_q, (current_distance, neighbor, beaver))
+        self.closer_to_me = set()
+        self.closer_to_them = set()
+        for tile in self.game.tiles:
+            beaver, _ = source[tile]
+            if not beaver:
+                continue
+            if beaver.owner == self.player:
+                self.closer_to_me.add(tile)
+            else:
+                self.closer_to_them.add(tile)
