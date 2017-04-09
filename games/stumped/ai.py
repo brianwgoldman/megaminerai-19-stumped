@@ -52,7 +52,13 @@ def try_suicide(beaver):
             return False
     if not beaver.tile.lodge_owner:
         return False
-    print("\nSUICIDE!\n")
+    print("SUICIDE!")
+    return True
+
+def permablocked(tile):
+    for neighbor in tile.get_neighbors():
+        if not neighbor._spawner and not neighbor._lodge_owner:
+            return False
     return True
 
 def move_cost(start, end):
@@ -116,11 +122,11 @@ class AI(BaseAI):
         return tile.lodge_owner and tile.lodge_owner == self.player.opponent
 
     def spawn(self):
-        can_spawn = {lodge for lodge in self.player.lodges if not lodge.beaver}
-        alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
+        can_spawn = {lodge for lodge in self.player.lodges if not lodge.beaver and not permablocked(lodge)}
+
         hot_ladies = len([beaver for beaver in self.player.beavers if beaver.job is self.HOT_LADY])
         enemies = [beaver.tile for beaver in self.player.opponent.beavers]
-        while alive_beavers < self.game.free_beavers_count:
+        while self.alive_beavers < self.game.free_beavers_count:
             path = []
             if hot_ladies == 0 and enemies:
                 job = self.HOT_LADY
@@ -134,7 +140,7 @@ class AI(BaseAI):
             lodge = path[0]
             can_spawn.remove(lodge)
             job.recruit(lodge)
-            alive_beavers += 1
+            self.alive_beavers += 1
 
     def enough_to_build(self, beaver, tile):
         return beaver.branches + tile.branches >= self.player.branches_to_build_lodge
@@ -299,6 +305,7 @@ class AI(BaseAI):
             else:
                 raise Exception("Bad job title:" + job.title)
         self.COMBAT = set([self.HUNGRY, self.BASIC, self.HOT_LADY])
+        self.alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
 
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
@@ -325,6 +332,7 @@ class AI(BaseAI):
                 self.pile_branches(beaver)
         for beaver in self.player.beavers:
             self.try_move_off_lodge(beaver)
+        self.spawn()
         print('Done with our turn')
         return True # to signify that we are truly done with this turn
 
