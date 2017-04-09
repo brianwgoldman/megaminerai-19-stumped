@@ -124,13 +124,13 @@ class AI(BaseAI):
     def spawn(self):
         can_spawn = {lodge for lodge in self.player.lodges if not lodge.beaver and not permablocked(lodge)}
 
-        hot_ladies = len([beaver for beaver in self.player.beavers if beaver.job is self.HOT_LADY])
+
         enemies = [beaver.tile for beaver in self.player.opponent.beavers]
         while self.alive_beavers < self.game.free_beavers_count:
             path = []
-            if hot_ladies == 0 and enemies:
+            if self.hot_ladies == 0 and enemies:
                 job = self.HOT_LADY
-                hot_ladies += 1
+                self.hot_ladies += 1
                 path = self.find_path(can_spawn, enemies)
             if not path:
                 job = self.BUILDER
@@ -306,6 +306,7 @@ class AI(BaseAI):
                 raise Exception("Bad job title:" + job.title)
         self.COMBAT = set([self.HUNGRY, self.BASIC, self.HOT_LADY])
         self.alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
+        self.hot_ladies = len([beaver for beaver in self.player.beavers if beaver.job is self.HOT_LADY])
 
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
