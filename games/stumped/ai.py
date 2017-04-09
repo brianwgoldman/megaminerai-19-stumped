@@ -118,7 +118,7 @@ class AI(BaseAI):
                 hot_ladies += 1
                 path = self.find_path(can_spawn, enemies)
             if not path:
-                job = self.HUNGRY
+                job = self.BUILDER
                 path = self.find_path(can_spawn, self.branch_spawners())
             if not path:
                 break
@@ -146,7 +146,6 @@ class AI(BaseAI):
         if not can_act(beaver) or beaver.actions == 0:
             return
         if self.enough_to_build(beaver, beaver.tile) and not beaver.tile.lodge_owner:
-            # print('{} building lodge'.format(beaver))
             beaver.build_lodge()
 
     def try_pick_up(self, beaver):
@@ -182,7 +181,7 @@ class AI(BaseAI):
         harvest_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == type]
         if harvest_tiles:
             tile = max(harvest_tiles, key=lambda tile: tile.spawner.health)
-            print('{} harvesting {}'.format(beaver, tile.spawner))
+            # print('{} harvesting {}'.format(beaver, tile.spawner))
             beaver.harvest(tile.spawner)
 
     def try_attack(self, beaver):
@@ -216,14 +215,13 @@ class AI(BaseAI):
             if path:
                 step = path[0]
                 if move_cost(beaver.tile, step) <= beaver.moves:
-                    print("\nMoving off of lodge!")
                     beaver.move(step)
 
     def branch_spawners(self):
         return {tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES}
 
     def gather_branches(self, beaver):
-        print("Gather mode")
+        # print("Gather mode")
         self.try_attack(beaver)
         self.try_harvest(beaver, BRANCHES)
         goals = [tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES]
@@ -245,7 +243,7 @@ class AI(BaseAI):
         self.try_pickup_opponent(beaver)
 
     def pile_branches(self, beaver):
-        print("Pile mode")
+        # print("Pile mode")
         self.try_attack(beaver)
         goals = [tile for tile in self.closer_to_me if droppable(tile) and not self.my_lodge(tile) and not self.their_lodge(tile)]
         better = [tile for tile in goals if tile.branches > 0]
