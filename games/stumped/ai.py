@@ -128,12 +128,13 @@ class AI(BaseAI):
         enemies = [beaver.tile for beaver in self.player.opponent.beavers]
         while self.alive_beavers < self.game.free_beavers_count:
             path = []
-            if self.hot_ladies == 0 and enemies:
-                job = self.HOT_LADY
-                self.hot_ladies += 1
+            if self.num_builders > self.num_fighters and enemies:
+                job = self.FIGHTER
+                self.num_fighters += 1
                 path = self.find_path(can_spawn, enemies)
             if not path:
                 job = self.BUILDER
+                self.num_builders += 1
                 path = self.find_path(can_spawn, self.branch_spawners())
             if not path:
                 break
@@ -304,9 +305,10 @@ class AI(BaseAI):
                 self.BUILDER = job
             else:
                 raise Exception("Bad job title:" + job.title)
-        self.COMBAT = set([self.HUNGRY, self.BASIC, self.HOT_LADY])
+        self.COMBAT = set([self.HUNGRY, self.BASIC, self.HOT_LADY, self.FIGHTER])
         self.alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
-        self.hot_ladies = len([beaver for beaver in self.player.beavers if beaver.job is self.HOT_LADY])
+        self.num_fighters = len([beaver for beaver in self.player.beavers if beaver.job is self.FIGHTER])
+        self.num_builders = len([beaver for beaver in self.player.beavers if beaver.job is self.BUILDER])
 
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
@@ -326,9 +328,12 @@ class AI(BaseAI):
             self.try_build_lodge(beaver)
             if load(beaver) >= beaver.job.carry_limit:
                 if beaver.job in self.COMBAT:
-                    print("\nCombat loaded!\n")
-                self.try_build_lodge(beaver)
-                self.pile_branches(beaver)
+                    print("\nChuck it\n")
+                    self.try_build_lodge(beaver)
+                    beaver.drop(beaver.tile, BRANCHES, beaver.branches)
+                else:
+                    self.try_build_lodge(beaver)
+                    self.pile_branches(beaver)
             elif beaver.job in self.COMBAT:
                 self.go_hunting(beaver)
             else:
