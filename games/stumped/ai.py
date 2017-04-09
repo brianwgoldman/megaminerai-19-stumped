@@ -207,6 +207,18 @@ class AI(BaseAI):
             beaver.move(step)
             self.try_attack(beaver)
 
+    def try_move_off_lodge(self, beaver):
+        if not can_act(beaver) or not beaver.tile.lodge_owner:
+            return
+        non_lodge_tiles = [tile for tile in beaver.tile.get_neighbors() if pathable(tile)]
+        if non_lodge_tiles:
+            path = self.find_path(non_lodge_tiles, self.branch_spawners())
+            if path:
+                step = path[0]
+                if move_cost(beaver.tile, step) <= beaver.moves:
+                    print("\nMoving off of lodge!")
+                    beaver.move(step)
+
     def branch_spawners(self):
         return {tile for tile in self.game.tiles if tile.spawner and tile.spawner.health > 1 and tile.spawner.type == BRANCHES}
 
@@ -311,7 +323,8 @@ class AI(BaseAI):
             elif beaver.branches:
                 self.try_build_lodge(beaver)
                 self.pile_branches(beaver)
-
+        for beaver in self.player.beavers:
+            self.try_move_off_lodge(beaver)
         print('Done with our turn')
         return True # to signify that we are truly done with this turn
 
