@@ -44,7 +44,16 @@ def tile_distance(t1, t2):
     return abs(t1.x - t2.x) + abs(t1.y - t2.y)
 
 def can_act(beaver):
-    return beaver and beaver.turns_distracted == 0 and beaver.health > 0
+    return beaver and beaver.turns_distracted == 0 and beaver.health > 0 and not try_suicide(beaver)
+
+def try_suicide(beaver):
+    for neighbor in beaver.tile.get_neighbors():
+        if not neighbor._spawner and not neighbor._lodge_owner:
+            return False
+    if not beaver.tile.lodge_owner:
+        return False
+    print("\nSUICIDE!\n")
+    return True
 
 def move_cost(start, end):
     if start.type == WATER:
@@ -130,18 +139,6 @@ class AI(BaseAI):
     def enough_to_build(self, beaver, tile):
         return beaver.branches + tile.branches >= self.player.branches_to_build_lodge
 
-
-    def try_suicide(self, beaver):
-        if not can_act(beaver) or beaver.actions == 0:
-            return
-        for neighbor in beaver.tile.get_neighbors():
-            if not neighbor._spawner and not neighbor._lodge_owner:
-                return
-        if beaver.tile.lodge_owner:
-            return
-        print("\nKilling self!\n")
-        beaver.attack(beaver)
-
     def try_build_lodge(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
             return
@@ -166,7 +163,7 @@ class AI(BaseAI):
         branch_tiles = [tile for tile in neighbors if tile.branches > 0 and self.their_lodge(tile)]
         if branch_tiles:
             tile = min(branch_tiles, key=lambda tile: tile.branches)
-            print('\n{} picking up branches from opponent\n'.format(beaver))
+            print('{} picking up branches from opponent'.format(beaver))
             beaver.pickup(tile, 'branches', min(tile.branches, beaver.job.carry_limit - load(beaver)))
 #         # try to pickup food
 #         elif tile.food > 0:
@@ -318,7 +315,6 @@ class AI(BaseAI):
         for beaver in self.player.beavers:  # if we have a beaver, and it's not distracted, and it is alive (health greater than 0)
             if not can_act(beaver):
                 continue
-            # self.try_suicide(beaver)
             self.try_build_lodge(beaver)
             if beaver.job in self.COMBAT:
                 self.go_hunting(beaver)
