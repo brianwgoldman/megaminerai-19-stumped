@@ -64,7 +64,7 @@ def pathable(tile):
     return tile and tile.is_pathable()
 
 def droppable(tile):
-    return tile and not tile.spawner and tile.type == LAND
+    return tile and not tile.spawner and not tile.flow_direction
 
 def load(beaver):
     return beaver.branches + beaver.food
@@ -109,18 +109,38 @@ class AI(BaseAI):
     def spawn(self):
         can_spawn = {lodge for lodge in self.player.lodges if not lodge.beaver}
         alive_beavers = len([beaver for beaver in self.player.beavers if beaver.health > 0])
+        hot_ladies = len([beaver for beaver in self.player.beavers if beaver.job is self.HOT_LADY])
+        enemies = [beaver.tile for beaver in self.player.opponent.beavers]
         while alive_beavers < self.game.free_beavers_count:
-            path = self.find_path(can_spawn, self.branch_spawners())
+            path = []
+            if hot_ladies == 0 and enemies:
+                job = self.HOT_LADY
+                hot_ladies += 1
+                path = self.find_path(can_spawn, enemies)
+            if not path:
+                job = self.HUNGRY
+                path = self.find_path(can_spawn, self.branch_spawners())
             if not path:
                 break
             lodge = path[0]
             can_spawn.remove(lodge)
-            job = random.choice(self.game.jobs)
             job.recruit(lodge)
             alive_beavers += 1
 
     def enough_to_build(self, beaver, tile):
         return beaver.branches + tile.branches >= self.player.branches_to_build_lodge
+
+
+    def try_suicide(self, beaver):
+        if not can_act(beaver) or beaver.actions == 0:
+            return
+        for neighbor in beaver.tile.get_neighbors():
+            if not neighbor._spawner and not neighbor._lodge_owner:
+                return
+        if beaver.tile.lodge_owner:
+            return
+        print("\nKilling self!\n")
+        beaver.attack(beaver)
 
     def try_build_lodge(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
@@ -168,7 +188,9 @@ class AI(BaseAI):
     def try_attack(self, beaver):
         if not can_act(beaver) or beaver.actions == 0:
             return
-        target_tiles = [tile for tile in beaver.tile.get_neighbors() if tile.beaver and tile.beaver.owner != self.player and tile.beaver.recruited and tile.beaver.health > 0]
+        target_tiles = [tile for tile in beaver.tile.get_neighbors()
+                        if tile.beaver and tile.beaver.owner != self.player and
+                        tile.beaver.recruited and tile.beaver.health > 0 and beaver.turns_distracted == 0]
         if target_tiles:
             target_tile = min(target_tiles, key=lambda tile: tile.beaver.health)
             print('{} attacking {}'.format(beaver, target_tile.beaver))
@@ -230,30 +252,61 @@ class AI(BaseAI):
                     print("Dropping off")
                     beaver.drop(path[-1], 'branches', beaver.branches)
 
+    def enemy_tiles(self, job):
+        return [beaver.tile for beaver in self.player.opponent.beavers if beaver.job is job and beaver.health > 0 and beaver.turns_distracted == 0]
 
+    def go_hunting(self, beaver):
+        self.try_attack(beaver)
+        path = self.find_path([beaver.tile], [enemy.tile for enemy in self.player.opponent.beavers
+                                              if enemy.health > 0 and enemy.turns_distracted == 0])
+        self.attack_move(beaver, path, last_step=False)
+#         ordering = [self.HUNGRY, self.HOT_LADY, self.FIGHTER, self.BULKY, self.BUILDER, self.SWIFT, self.BASIC]
+#         for job in ordering:
+#             goal_tiles = self.enemy_tiles(job)
+#             if goal_tiles:
+#                 path = self.find_path([beaver.tile], goal_tiles)
+#                 if path:
+#                     self.attack_move(beaver, path, last_step=False)
+#                     return
+
+    def setup(self):
+        for job in self.game.jobs:
+            if job.title == 'Hungry':
+                self.HUNGRY = job
+            elif job.title == 'Fighter':
+                self.FIGHTER = job
+            elif job.title == 'Basic':
+                self.BASIC = job
+            elif job.title == 'Bulky':
+                self.BULKY = job
+            elif job.title == 'Swift':
+                self.SWIFT = job
+            elif job.title == 'Hot Lady':
+                self.HOT_LADY = job
+            elif job.title == 'Builder':
+                self.BUILDER = job
+            else:
+                raise Exception("Bad job title:" + job.title)
     def run_turn(self):
         """ This is called every time it is this AI.player's turn.
 
         Returns:
             bool: Represents if you want to end your turn. True means end your turn, False means to keep your turn going and re-call this function.
         """
-        # This is your Stumped ShellAI
-        # ShellAI is intended to be a simple AI that does everything possible in the game, but plays the game very poorly
-        # This example code does the following:
-        # 1. Grabs a single beaver
-        # 2. tries to move the beaver
-        # 3. tries to do one of the 5 actions on it
-        # 4. Grabs a lodge and tries to recruit a new beaver
 
         # First let's do a simple print statement telling us what turn we are on
         print('My Turn {}'.format(self.game.current_turn))
+        self.setup()
         self.set_nearest_beaver()
         self.spawn()
         for beaver in self.player.beavers:  # if we have a beaver, and it's not distracted, and it is alive (health greater than 0)
             if not can_act(beaver):
                 continue
+            # self.try_suicide(beaver)
             self.try_build_lodge(beaver)
-            if load(beaver) < beaver.job.carry_limit:
+            if beaver.job is self.HOT_LADY:
+                self.go_hunting(beaver)
+            elif load(beaver) < beaver.job.carry_limit:
                 self.gather_branches(beaver)
             elif beaver.branches:
                 self.try_build_lodge(beaver)
