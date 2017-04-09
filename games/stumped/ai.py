@@ -252,10 +252,17 @@ class AI(BaseAI):
         # print("Pile mode")
         self.try_attack(beaver)
         goals = [tile for tile in self.closer_to_me if droppable(tile) and not self.my_lodge(tile) and not self.their_lodge(tile)]
+        path = self.find_path([beaver.tile], goals)
         better = [tile for tile in goals if tile.branches > 0]
         if better:
-            goals = better
-        path = self.find_path([beaver.tile], goals)
+            better_path = self.find_path([beaver.tile], better)
+            if better_path:
+                turns_away = len(better_path) - len(path)
+                more_needed = self.player.branches_to_build_lodge - beaver.branches - path[-1].branches
+                if more_needed / beaver.job.carry_limit > turns_away:
+                    path = better_path
+                else:
+                    print("\nDrop it now!\n")
         if not path:
             return
         if self.enough_to_build(beaver, path[-1]):
@@ -328,7 +335,7 @@ class AI(BaseAI):
             self.try_build_lodge(beaver)
             if load(beaver) >= beaver.job.carry_limit:
                 if beaver.job in self.COMBAT:
-                    print("\nChuck it\n")
+                    print("Chuck it")
                     self.try_build_lodge(beaver)
                     beaver.drop(beaver.tile, BRANCHES, beaver.branches)
                 else:
